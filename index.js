@@ -33,39 +33,72 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// RUTA 1: REGISTRO DE USUARIO
+// RUTA 1: REGISTRO DE USUARIO (Con Kit de Inicio de Categorías)
 // ==========================================
 app.post('/api/registro', (req, res) => {
-    // 1. Extraemos los datos que nos enviará Postman (o Kotlin en el futuro)
     const { nombre_s, correo_electronico, contrasena } = req.body;
 
-    // Validación rápida: revisar que no falten datos
     if (!nombre_s || !correo_electronico || !contrasena) {
-        return res.status(400).json({ mensaje: "Por favor, completa todos los campos." });
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios." });
     }
 
-    // 2. Preparamos la consulta SQL para insertar en la tabla que creamos
-    const sql = `INSERT INTO Usuario (nombre_s, correo_electronico, contrasena) VALUES (?, ?, ?)`;
-
-    // 3. Ejecutamos la consulta en MySQL
-    db.query(sql, [nombre_s, correo_electronico, contrasena], (err, result) => {
+    // PASO 1: Creamos al usuario en la base de datos
+    const sqlUsuario = `INSERT INTO Usuario (nombre_s, correo_electronico, contrasena) VALUES (?, ?, ?)`;
+    
+    db.query(sqlUsuario, [nombre_s, correo_electronico, contrasena], (err, resultUsuario) => {
         if (err) {
-            console.error("Error en el registro:", err);
-            // Si el correo ya existe, MySQL lanza un error 'ER_DUP_ENTRY' por la regla UNIQUE que le pusimos
+            console.error("Error al registrar usuario:", err);
             if (err.code === 'ER_DUP_ENTRY') {
-                return res.status(400).json({ mensaje: "Este correo electrónico ya está registrado." });
+                return res.status(400).json({ mensaje: "Ese correo electrónico ya está en uso." });
             }
             return res.status(500).json({ mensaje: "Error interno del servidor." });
         }
+
+        // ¡Aquí está la magia! Extraemos el ID del usuario que se acaba de registrar
+        const nuevoUserId = resultUsuario.insertId;
+
+        // PASO 2: Preparamos los "Kits de Inicio" usando el nuevo ID
+        const categoriasGastoPorDefecto = [
+            [nuevoUserId, 'Alimentación'],
+            [nuevoUserId, 'Transporte'],
+            [nuevoUserId, 'Vivienda'],
+            [nuevoUserId, 'Salud'],
+            [nuevoUserId, 'Entretenimiento']
+        ];
+
+        const categoriasIngresoPorDefecto = [
+            [nuevoUserId, 'Salario'],
+            [nuevoUserId, 'Ventas'],
+            [nuevoUserId, 'Inversiones'],
+            [nuevoUserId, 'Otros']
+        ];
+
+        // PASO 3: Insertamos todas las categorías de gasto de un solo golpe
+        const sqlGasto = `INSERT INTO Categoria_gasto (user_id, nombre_categoria) VALUES ?`;
         
-        // 4. Respondemos a la app que todo salió perfecto
-        res.status(201).json({ 
-            mensaje: "¡Usuario registrado exitosamente en FREEZE-XPENDS!",
-            user_id: result.insertId 
+        // Fíjate que [categoriasGastoPorDefecto] va entre corchetes, esto le dice a MySQL que es una inserción múltiple
+        db.query(sqlGasto, [categoriasGastoPorDefecto], (errGasto) => {
+            if (errGasto) {
+                console.error("Error precargando categorías de gasto:", errGasto);
+                // No detenemos la app si falla esto, pero lo registramos
+            }
+
+            // PASO 4: Insertamos todas las categorías de ingreso
+            const sqlIngreso = `INSERT INTO Categoria_ingreso (user_id, nombre_categoria) VALUES ?`;
+            db.query(sqlIngreso, [categoriasIngresoPorDefecto], (errIngreso) => {
+                if (errIngreso) {
+                    console.error("Error precargando categorías de ingreso:", errIngreso);
+                }
+
+                // PASO 5: Le respondemos a la aplicación en Android que todo fue un éxito
+                res.status(201).json({ 
+                    mensaje: "¡Usuario registrado y cuenta configurada con éxito!",
+                    user_id: nuevoUserId
+                });
+            });
         });
     });
 });
-
 // ==========================================
 // RUTA 2: INICIO DE SESIÓN (LOGIN)
 // ==========================================
@@ -314,6 +347,136 @@ app.put('/api/usuarios/:user_id', (req, res) => {
 
         // 5. Éxito
         res.status(200).json({ mensaje: "¡Perfil de usuario actualizado correctamente!" });
+    });
+});
+
+// ==========================================
+// RUTA 9: CREAR UN INGRESO
+// ==========================================
+app.post('/api/ingresos', (req, res) => {
+    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido } = req.body;
+
+    if (!user_id || !categoria_id || !fecha_ingreso || !nombre_ingreso || !monto) {
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios para el ingreso." });
+    }
+
+    const sql = `
+        INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    // Si 'recibido' no viene en la petición, por defecto será 0 (falso)
+    const estatusRecibido = recibido !== undefined ? recibido : 0;
+
+    db.query(sql, [user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion || null, monto, estatusRecibido], (err, result) => {
+        if (err) {
+            console.error("Error al registrar el ingreso:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
+        res.status(201).json({ mensaje: "¡Ingreso registrado exitosamente!", ingreso_id: result.insertId });
+    });
+});
+
+// ==========================================
+// RUTA 10: LEER TODOS LOS INGRESOS DE UN USUARIO
+// ==========================================
+app.get('/api/ingresos/:user_id', (req, res) => {
+    const userId = req.params.user_id;
+
+    // Hacemos un JOIN para que la API devuelva el nombre de la categoría, no solo el número ID
+    const sql = `
+        SELECT i.*, c.nombre_categoria 
+        FROM Ingreso i
+        JOIN Categoria_ingreso c ON i.categoria_id = c.categoria_id
+        WHERE i.user_id = ?
+        ORDER BY i.fecha_ingreso DESC
+    `;
+
+    db.query(sql, [userId], (err, results) => {
+        if (err) {
+            console.error("Error al obtener los ingresos:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
+        res.status(200).json(results);
+    });
+});
+
+// ==========================================
+// RUTA 11: ACTUALIZAR/EDITAR UN INGRESO
+// ==========================================
+app.put('/api/ingresos/:ingreso_id', (req, res) => {
+    const ingresoId = req.params.ingreso_id;
+    const { categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido } = req.body;
+
+    const sql = `
+        UPDATE Ingreso 
+        SET categoria_id = ?, fecha_ingreso = ?, nombre_ingreso = ?, descripcion = ?, monto = ?, recibido = ?
+        WHERE ingreso_id = ?
+    `;
+
+    db.query(sql, [categoria_id, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido, ingresoId], (err, result) => {
+        if (err) {
+            console.error("Error al actualizar el ingreso:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ mensaje: "No se encontró el ingreso." });
+        }
+        res.status(200).json({ mensaje: "¡Ingreso actualizado correctamente!" });
+    });
+});
+
+// ==========================================
+// RUTA 12: ELIMINAR UN INGRESO
+// ==========================================
+app.delete('/api/ingresos/:ingreso_id', (req, res) => {
+    const ingresoId = req.params.ingreso_id;
+
+    const sql = `DELETE FROM Ingreso WHERE ingreso_id = ?`;
+
+    db.query(sql, [ingresoId], (err, result) => {
+        if (err) {
+            console.error("Error al eliminar el ingreso:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ mensaje: "No se encontró el ingreso a eliminar." });
+        }
+        res.status(200).json({ mensaje: "¡Ingreso eliminado exitosamente!" });
+    });
+});
+
+// ==========================================
+// RUTA 13: ACTUALIZAR ESTATUS PREMIUM DEL USUARIO
+// ==========================================
+app.put('/api/usuarios/:user_id/premium', (req, res) => {
+    const userId = req.params.user_id;
+    
+    // Recibimos el estatus (1 para Premium, 0 para Gratuito)
+    const { premium } = req.body;
+
+    // Validación para asegurarnos de que envíen un 1 o un 0
+    if (premium === undefined) {
+        return res.status(400).json({ mensaje: "Debes enviar el nuevo estatus premium (1 o 0)." });
+    }
+
+    const sql = `UPDATE Usuario SET premium = ? WHERE user_id = ?`;
+
+    db.query(sql, [premium, userId], (err, result) => {
+        if (err) {
+            console.error("Error al actualizar estatus Premium:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ mensaje: "Usuario no encontrado." });
+        }
+
+        const mensajeExito = premium === 1 
+            ? "¡Felicidades! Ahora eres un usuario Premium." 
+            : "Tu suscripción Premium ha sido cancelada.";
+
+        res.status(200).json({ mensaje: mensajeExito });
     });
 });
 
