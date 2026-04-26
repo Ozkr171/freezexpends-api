@@ -33,7 +33,7 @@ const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
-        password: process.env.EMAIL_PASS
+        pass: process.env.EMAIL_PASS
     }
 });
 
@@ -109,6 +109,35 @@ app.post('/api/registro', (req, res) => {
         });
     });
 });
+
+// ==========================================
+// RUTA 1.5 CAMBIO DE CONTRASEÑA 
+// ==========================================
+app.post('/api/reset-password', (req, res) => {
+    const { correo_electronico, codigo, nueva_contrasena } = req.body;
+    const ahora = new Date(); // Usamos la hora del servidor de Node
+
+    // Cambiamos NOW() por un signo de interrogación para pasar la hora de Node
+    const sql = "SELECT * FROM Usuario WHERE correo_electronico = ? AND reset_code = ? AND reset_expires > ?";
+    
+    db.query(sql, [correo_electronico, codigo, ahora], (err, results) => {
+        if (err) {
+            console.error("Error en DB:", err);
+            return res.status(500).json({ mensaje: "Error en el servidor" });
+        }
+        
+        if (results.length === 0) {
+            return res.status(400).json({ mensaje: "Código inválido o expirado." });
+        }
+
+        const updateSql = "UPDATE Usuario SET contrasena = ?, reset_code = NULL, reset_expires = NULL WHERE correo_electronico = ?";
+        db.query(updateSql, [nueva_contrasena, correo_electronico], (errUpdate) => {
+            if (errUpdate) return res.status(500).json({ mensaje: "Error al actualizar" });
+            res.status(200).json({ mensaje: "¡Contraseña actualizada!" });
+        });
+    });
+});
+
 // ==========================================
 // RUTA 2: INICIO DE SESIÓN (LOGIN)
 // ==========================================
@@ -524,6 +553,34 @@ app.post('/api/forgot-password', (req, res) => {
                 return res.status(500).json({ mensaje: "Error al enviar el correo" });
             }
             res.status(200).json({ mensaje: "Código enviado con éxito" });
+        });
+    });
+});
+
+// ==========================================
+// RUTA: VERIFICAR CÓDIGO Y CAMBIAR CONTRASEÑA
+// ==========================================
+app.post('/api/reset-password', (req, res) => {
+    const { correo_electronico, codigo, nueva_contrasena } = req.body;
+
+    // 1. Buscamos al usuario que tenga ese correo, ese código y que el código no haya expirado
+    const sql = "SELECT * FROM Usuario WHERE correo_electronico = ? AND reset_code = ? AND reset_expires > NOW()";
+    
+    db.query(sql, [correo_electronico, codigo], (err, results) => {
+        if (err) return res.status(500).json({ mensaje: "Error en el servidor" });
+        
+        // Si no encuentra nada, es que el código está mal o ya pasaron los 15 min
+        if (results.length === 0) {
+            return res.status(400).json({ mensaje: "Código inválido o expirado." });
+        }
+
+        // 2. Si todo está bien, actualizamos la contraseña y limpiamos los campos del código
+        const updateSql = "UPDATE Usuario SET contrasena = ?, reset_code = NULL, reset_expires = NULL WHERE correo_electronico = ?";
+        
+        db.query(updateSql, [nueva_contrasena, correo_electronico], (errUpdate) => {
+            if (errUpdate) return res.status(500).json({ mensaje: "Error al actualizar la contraseña" });
+            
+            res.status(200).json({ mensaje: "¡Contraseña actualizada con éxito!" });
         });
     });
 });
