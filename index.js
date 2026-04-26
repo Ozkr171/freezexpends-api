@@ -1,4 +1,6 @@
+
 require('dotenv').config(); 
+const nodemailer = require('nodemailer');
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -25,6 +27,14 @@ db.connect((err) => {
         return;
     }
     console.log('¡Conectado exitosamente a la base de datos en Aiven!');
+});
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        password: process.env.EMAIL_PASS
+    }
 });
 
 // 3. Crear una ruta de prueba básica
@@ -477,6 +487,44 @@ app.put('/api/usuarios/:user_id/premium', (req, res) => {
             : "Tu suscripción Premium ha sido cancelada.";
 
         res.status(200).json({ mensaje: mensajeExito });
+    });
+});
+ 
+// ==========================================
+// RUTA: ENVIAR CÓDIGO DE RECUPERACIÓN
+// ==========================================
+
+app.post('/api/forgot-password', (req, res) => {
+    console.log("¡Llegó una petición para recuperar contraseña!", req.body);
+    const { correo_electronico } = req.body;
+
+    // 1. Generar código de 6 dígitos
+    const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiracion = new Date(Date.now() + 15 * 60000); // 15 minutos
+
+    // 2. Guardar en la DB de Aiven
+    const sql = "UPDATE Usuario SET reset_code = ?, reset_expires = ? WHERE correo_electronico = ?";
+    db.query(sql, [codigo, expiracion, correo_electronico], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error en el servidor" });
+        if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Correo no encontrado" });
+
+        // 3. El texto que se manda al correo
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: correo_electronico,
+            subject: '❄️ Código de Seguridad - FREEZE-XPENDS',
+            text: `Hola, recibimos una solicitud para restablecer tu contraseña. 
+            Tu código de verificación es: ${codigo}
+            Este código expirará en 15 minutos.`
+        };
+
+        transporter.sendMail(mailOptions, (error) => {
+            if (error) {
+                console.error("Error al enviar correo:", error);
+                return res.status(500).json({ mensaje: "Error al enviar el correo" });
+            }
+            res.status(200).json({ mensaje: "Código enviado con éxito" });
+        });
     });
 });
 
