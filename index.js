@@ -158,7 +158,7 @@ app.post('/api/gastos', (req, res) => {
     // 4. Ejecutamos la consulta. Usamos '|| null' por si enviaron esos campos vacíos
     db.query(sql, [
         user_id, 
-        categoria_id || null, 
+        categoria_id, 
         fecha_gasto, 
         nombre_gasto, 
         descripcion || null, 
@@ -175,6 +175,24 @@ app.post('/api/gastos', (req, res) => {
             mensaje: "¡Gasto registrado exitosamente!",
             gasto_id: result.insertId
         });
+    });
+});
+
+// --- RUTA: CATEGORÍAS DE GASTO ---
+app.get('/api/categorias/gastos/:user_id', (req, res) => {
+    const { user_id } = req.params;
+    db.query('SELECT categoria_id, nombre_categoria, limite_presupuesto FROM Categoria_gasto WHERE user_id = ?', [user_id], (err, results) => {
+        if (err) return res.status(500).json({ mensaje: "Error al obtener categorías", data: null });
+        res.status(200).json({ mensaje: "Categorías de gastos obtenidas", data: results });
+    });
+});
+
+// --- RUTA: CATEGORÍAS DE INGRESO ---
+app.get('/api/categorias/ingresos/:user_id', (req, res) => {
+    const { user_id } = req.params;
+    db.query('SELECT categoria_id, nombre_categoria FROM Categoria_ingreso WHERE user_id = ?', [user_id], (err, results) => {
+        if (err) return res.status(500).json({ mensaje: "Error al obtener categorías", data: null });
+        res.status(200).json({ mensaje: "Categorías de ingresos obtenidas", data: results });
     });
 });
 
@@ -201,19 +219,13 @@ app.get('/api/gastos/:user_id', (req, res) => {
         }
 
         // 4. Si el usuario no tiene gastos, 'results' será un arreglo vacío []
+        // Cuando no hay gastos:
         if (results.length === 0) {
-            return res.status(200).json({ 
-                mensaje: "Este usuario aún no tiene gastos registrados.",
-                gastos: [] 
-            });
+            return res.status(200).json({ mensaje: "Sin gastos aún.", data: [] });
         }
-
-        // 5. Respondemos enviando la lista completa de gastos
-        res.status(200).json({
-            mensaje: "Gastos obtenidos exitosamente",
-            total_gastos: results.length,
-            gastos: results
-        });
+        
+        // Cuando sí hay gastos:
+        res.status(200).json({ mensaje: "Gastos obtenidos exitosamente", data: results });
     });
 });
 
@@ -397,7 +409,7 @@ app.get('/api/ingresos/:user_id', (req, res) => {
             console.error("Error al obtener los ingresos:", err);
             return res.status(500).json({ mensaje: "Error interno del servidor." });
         }
-        res.status(200).json(results);
+        res.status(200).json({ mensaje: "Ingresos obtenidos exitosamente", data: results });
     });
 });
 
@@ -477,6 +489,47 @@ app.put('/api/usuarios/:user_id/premium', (req, res) => {
             : "Tu suscripción Premium ha sido cancelada.";
 
         res.status(200).json({ mensaje: mensajeExito });
+    });
+});
+
+// ==========================================
+// RUTA 14: OBTENER EL PRESUPUESTO GLOBAL DEL USUARIO
+// ==========================================
+app.get('/api/usuarios/:user_id/presupuesto', (req, res) => {
+    const userId = req.params.user_id;
+    const sql = `SELECT presupuesto_global FROM Usuario WHERE user_id = ?`;
+    db.query(sql, [userId], (err, results) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno" });
+        if (results.length === 0) return res.status(404).json({ mensaje: "Usuario no encontrado" });
+        res.status(200).json({ presupuesto_global: results[0].presupuesto_global });
+    });
+});
+
+// ==========================================
+// RUTA 15: ACTUALIZAR PRESUPUESTO GLOBAL DEL USUARIO
+// ==========================================
+app.put('/api/usuarios/:user_id/presupuesto', (req, res) => {
+    const userId = req.params.user_id;
+    const { presupuesto_global } = req.body;
+
+    const sql = `UPDATE Usuario SET presupuesto_global = ? WHERE user_id = ?`;
+    db.query(sql, [presupuesto_global, userId], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+        res.status(200).json({ mensaje: "Presupuesto global actualizado" });
+    });
+});
+
+// ==========================================
+// RUTA 16: ACTUALIZAR LÍMITE DE UNA CATEGORÍA DE GASTO
+// ==========================================
+app.put('/api/categorias/gastos/:categoria_id/presupuesto', (req, res) => {
+    const categoriaId = req.params.categoria_id;
+    const { limite_presupuesto } = req.body;
+
+    const sql = `UPDATE Categoria_gasto SET limite_presupuesto = ? WHERE categoria_id = ?`;
+    db.query(sql, [limite_presupuesto, categoriaId], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+        res.status(200).json({ mensaje: "Límite de categoría actualizado" });
     });
 });
 
