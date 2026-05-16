@@ -112,11 +112,9 @@ app.post('/api/login', (req, res) => {
         
         res.status(200).json({
             mensaje: "¡Inicio de sesión exitoso!",
-            data: {
-                user_id: usuario.user_id, 
-                nombre: usuario.nombre_s,
-                premium: usuario.premium
-            }
+            user_id: usuario.user_id, 
+            nombre: usuario.nombre_s,
+            premium: usuario.premium
         });
     });
 });
@@ -127,7 +125,7 @@ app.post('/api/login', (req, res) => {
 
 app.get('/api/usuarios/:user_id', (req, res) => {
     const userId = req.params.user_id;
-    const sql = `SELECT user_id, nombre_s, correo_electronico, premium FROM Usuario WHERE user_id = ?`;
+    const sql = `SELECT user_id, nombre_s, correo_electronico, premium, divisa, foto_perfil FROM Usuario WHERE user_id = ?`;
     
     db.query(sql, [userId], (err, results) => {
         if (err) return res.status(500).json({ mensaje: 'Error interno del servidor.' });
@@ -139,86 +137,15 @@ app.get('/api/usuarios/:user_id', (req, res) => {
 
 app.put('/api/usuarios/:user_id', (req, res) => {
     const userId = req.params.user_id;
-    const { nombre_s, correo_electronico, contrasena } = req.body;
+    const { nombre_s, correo_electronico, contrasena, divisa, foto_perfil } = req.body;
 
     if (!nombre_s || !correo_electronico) {
         return res.status(400).json({ mensaje: "Faltan datos obligatorios (nombre o correo)." });
     }
 
-    let sql = `UPDATE Usuario SET nombre_s = ?, correo_electronico = ?`;
-    let params = [nombre_s, correo_electronico];
+    let sql = `UPDATE Usuario SET nombre_s = ?, correo_electronico = ?, divisa = ?, foto_perfil = ?`;
+    let params = [nombre_s, correo_electronico, divisa || 'MXN', foto_perfil || null];
 
-    // 4. Ejecutamos la consulta. Usamos '|| null' por si enviaron esos campos vacíos
-    db.query(sql, [
-        user_id, 
-        categoria_id, 
-        fecha_gasto, 
-        nombre_gasto, 
-        descripcion || null, 
-        plazo || null, 
-        monto_gasto
-    ], (err, result) => {
-        if (err) {
-            console.error("Error al guardar el gasto:", err);
-            return res.status(500).json({ mensaje: "Error interno del servidor al guardar el gasto." });
-        }
-
-        // 5. Respondemos con éxito
-        res.status(201).json({
-            mensaje: "¡Gasto registrado exitosamente!",
-            gasto_id: result.insertId
-        });
-    });
-});
-
-// --- RUTA: CATEGORÍAS DE GASTO ---
-app.get('/api/categorias/gastos/:user_id', (req, res) => {
-    const { user_id } = req.params;
-    db.query('SELECT categoria_id, nombre_categoria, limite_presupuesto FROM Categoria_gasto WHERE user_id = ?', [user_id], (err, results) => {
-        if (err) return res.status(500).json({ mensaje: "Error al obtener categorías", data: null });
-        res.status(200).json({ mensaje: "Categorías de gastos obtenidas", data: results });
-    });
-});
-
-// --- RUTA: CATEGORÍAS DE INGRESO ---
-app.get('/api/categorias/ingresos/:user_id', (req, res) => {
-    const { user_id } = req.params;
-    db.query('SELECT categoria_id, nombre_categoria FROM Categoria_ingreso WHERE user_id = ?', [user_id], (err, results) => {
-        if (err) return res.status(500).json({ mensaje: "Error al obtener categorías", data: null });
-        res.status(200).json({ mensaje: "Categorías de ingresos obtenidas", data: results });
-    });
-});
-
-// ==========================================
-// RUTA 4: OBTENER TODOS LOS GASTOS DE UN USUARIO
-// ==========================================
-app.get('/api/gastos/:user_id', (req, res) => {
-    // 1. Extraemos el ID del usuario directamente de la URL
-    const userId = req.params.user_id;
-
-    // 2. Preparamos la consulta SQL
-    // Usamos ORDER BY fecha_gasto DESC para que los gastos más recientes salgan primero
-    const sql = `
-        SELECT * FROM Gasto 
-        WHERE user_id = ? 
-        ORDER BY fecha_gasto DESC
-    `;
-
-    // 3. Ejecutamos la consulta
-    db.query(sql, [userId], (err, results) => {
-        if (err) {
-            console.error("Error al obtener los gastos:", err);
-            return res.status(500).json({ mensaje: "Error interno del servidor." });
-        }
-
-        // 4. Si el usuario no tiene gastos, 'results' será un arreglo vacío []
-        // Cuando no hay gastos:
-        if (results.length === 0) {
-            return res.status(200).json({ mensaje: "Sin gastos aún.", data: [] });
-        }
-        
-        // Cuando sí hay gastos:
-        res.status(200).json({ mensaje: "Gastos obtenidos exitosamente", data: results });
     if (contrasena) {
         sql += `, contrasena = ?`;
         params.push(contrasena);
@@ -237,7 +164,6 @@ app.get('/api/gastos/:user_id', (req, res) => {
     });
 });
 
-
 app.delete('/api/usuarios/:user_id', (req, res) => {
     const userId = req.params.user_id;
     const sql = `DELETE FROM Usuario WHERE user_id = ?`;
@@ -248,7 +174,6 @@ app.delete('/api/usuarios/:user_id', (req, res) => {
         res.status(200).json({ mensaje: "Cuenta y datos eliminados correctamente." });
     });
 });
-
 
 app.put('/api/usuarios/:user_id/premium', (req, res) => {
     const userId = req.params.user_id;
@@ -289,6 +214,34 @@ app.get('/api/categorias/ingresos/:user_id', (req, res) => {
     });
 });
 
+app.post('/api/categorias/gastos', (req, res) => {
+    const { user_id, nombre_categoria, limite_presupuesto } = req.body;
+    
+    if (!user_id || !nombre_categoria) {
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios." });
+    }
+
+    const sql = `INSERT INTO Categoria_gasto (user_id, nombre_categoria, limite_presupuesto) VALUES (?, ?, ?)`;
+    db.query(sql, [user_id, nombre_categoria, limite_presupuesto || 0.00], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+        res.status(201).json({ mensaje: "Categoría de gasto creada exitosamente" });
+    });
+});
+
+app.post('/api/categorias/ingresos', (req, res) => {
+    const { user_id, nombre_categoria } = req.body;
+    
+    if (!user_id || !nombre_categoria) {
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios." });
+    }
+
+    const sql = `INSERT INTO Categoria_ingreso (user_id, nombre_categoria) VALUES (?, ?)`;
+    db.query(sql, [user_id, nombre_categoria], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+        res.status(201).json({ mensaje: "Categoría de ingreso creada exitosamente" });
+    });
+});
+
 // ==========================================
 // GASTOS
 // ==========================================
@@ -310,7 +263,6 @@ app.post('/api/gastos', (req, res) => {
         return res.status(400).json({ mensaje: "Faltan campos obligatorios." });
     }
 
-    // Le quitamos imagen_uri a la petición SQL
     const sql = `INSERT INTO Gasto (user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto) VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
     db.query(sql, [user_id, categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || null, monto_gasto], (err, result) => {
@@ -324,16 +276,21 @@ app.post('/api/gastos', (req, res) => {
 
 app.put('/api/gastos/:gasto_id', (req, res) => {
     const gastoId = req.params.gasto_id;
-    const { nombre_gasto, monto_gasto, fecha_gasto, descripcion, imagen_uri } = req.body;
+    // Extraemos las variables reales que manda el GastoRequest de Android
+    const { categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto } = req.body;
 
     if (!nombre_gasto || !monto_gasto || !fecha_gasto) {
-        return res.status(400).json({ mensaje: "Faltan datos para actualizar." });
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios para actualizar." });
     }
 
-    const sql = `UPDATE Gasto SET nombre_gasto = ?, monto_gasto = ?, fecha_gasto = ?, descripcion = ?, imagen_uri = ? WHERE gasto_id = ?`;
+    // REMOVEMOS 'imagen_uri' de la consulta y añadimos 'categoria_id' y 'plazo'
+    const sql = `UPDATE Gasto SET categoria_id = ?, fecha_gasto = ?, nombre_gasto = ?, descripcion = ?, plazo = ?, monto_gasto = ? WHERE gasto_id = ?`;
 
-    db.query(sql, [nombre_gasto, monto_gasto, fecha_gasto, descripcion || null, imagen_uri || null, gastoId], (err, result) => {
-        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+    db.query(sql, [categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || 'ÚNICO', monto_gasto, gastoId], (err, result) => {
+        if (err) {
+            console.error("🚨 ERROR EN BASE DE DATOS AL EDITAR GASTO:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
         if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Gasto no encontrado." });
         res.status(200).json({ mensaje: "¡Gasto actualizado!" });
     });
@@ -356,8 +313,6 @@ app.delete('/api/gastos/:gasto_id', (req, res) => {
 
 app.get('/api/ingresos/:user_id', (req, res) => {
     const userId = req.params.user_id;
-    
-    
     const sql = `
         SELECT i.*, c.nombre_categoria 
         FROM Ingreso i
@@ -365,29 +320,25 @@ app.get('/api/ingresos/:user_id', (req, res) => {
         WHERE i.user_id = ?
         ORDER BY i.fecha_ingreso DESC
     `;
-
     db.query(sql, [userId], (err, results) => {
-        if (err) {
-            console.error("Error al obtener los ingresos:", err);
-            return res.status(500).json({ mensaje: "Error interno del servidor." });
-        }
-        res.status(200).json({ mensaje: "Ingresos obtenidos exitosamente", data: results });
         if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
         res.status(200).json({ mensaje: "Ingresos obtenidos", data: results });
     });
 });
 
+// 1. RUTA PARA CREAR INGRESO (Ya guarda el plazo)
 app.post('/api/ingresos', (req, res) => {
-    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido } = req.body;
+
+    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo } = req.body;
 
     if (!user_id || !fecha_ingreso || !nombre_ingreso || !monto) {
         return res.status(400).json({ mensaje: "Faltan campos obligatorios." });
     }
 
-    // Le quitamos imagen_uri a la petición SQL
-    const sql = `INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    // AQUI ESTÁ LA MAGIA: Ya agregamos 'plazo' a la consulta SQL
+    const sql = `INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    db.query(sql, [user_id, categoria_id || 1, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido || 1], (err, result) => {
+    db.query(sql, [user_id, categoria_id || 1, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO'], (err, result) => {
         if (err) {
             console.error("🚨 ERROR FATAL DE MYSQL EN INGRESO:", err);
             return res.status(500).json({ mensaje: "Error interno al guardar el ingreso." });
@@ -398,69 +349,30 @@ app.post('/api/ingresos', (req, res) => {
 
 app.put('/api/ingresos/:ingreso_id', (req, res) => {
     const ingresoId = req.params.ingreso_id;
-    const { categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, imagen_uri } = req.body;
+    // Extraemos las variables reales que manda el IngresoRequest de Android
+    const { categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo } = req.body;
 
     if (!nombre_ingreso || !monto || !fecha_ingreso) {
         return res.status(400).json({ mensaje: "Faltan datos obligatorios para actualizar el ingreso." });
     }
 
-    const sql = `UPDATE Ingreso SET categoria_id = ?, fecha_ingreso = ?, nombre_ingreso = ?, descripcion = ?, monto = ?, recibido = ?, imagen_uri = ? WHERE ingreso_id = ?`;
+    // REMOVEMOS 'imagen_uri' de la consulta y añadimos el 'plazo'
+    const sql = `UPDATE Ingreso SET categoria_id = ?, fecha_ingreso = ?, nombre_ingreso = ?, descripcion = ?, monto = ?, recibido = ?, plazo = ? WHERE ingreso_id = ?`;
 
-    db.query(sql, [categoria_id || null, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido, imagen_uri || null, ingresoId], (err, result) => {
-        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+    db.query(sql, [categoria_id || null, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO', ingresoId], (err, result) => {
+        if (err) {
+            console.error("🚨 ERROR EN BASE DE DATOS AL EDITAR INGRESO:", err);
+            return res.status(500).json({ mensaje: "Error interno del servidor." });
+        }
         if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Ingreso no encontrado." });
         res.status(200).json({ mensaje: "¡Ingreso actualizado!" });
     });
 });
 
-app.delete('/api/ingresos/:ingreso_id', (req, res) => {
-    const ingresoId = req.params.ingreso_id;
-    const sql = `DELETE FROM Ingreso WHERE ingreso_id = ?`;
-
-    db.query(sql, [ingresoId], (err, result) => {
-        if (err) return res.status(500).json({ mensaje: "Error interno." });
-        if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Ingreso no encontrado." });
-        res.status(200).json({ mensaje: "¡Ingreso eliminado!" });
-    });
-});
-
 // ==========================================
-// RUTA 13: ACTUALIZAR ESTATUS PREMIUM DEL USUARIO
+// PRESUPUESTOS (Rutas faltantes añadidas)
 // ==========================================
-app.put('/api/usuarios/:user_id/premium', (req, res) => {
-    const userId = req.params.user_id;
-    
-    // Recibimos el estatus (1 para Premium, 0 para Gratuito)
-    const { premium } = req.body;
 
-    // Validación para asegurarnos de que envíen un 1 o un 0
-    if (premium === undefined) {
-        return res.status(400).json({ mensaje: "Debes enviar el nuevo estatus premium (1 o 0)." });
-    }
-
-    const sql = `UPDATE Usuario SET premium = ? WHERE user_id = ?`;
-
-    db.query(sql, [premium, userId], (err, result) => {
-        if (err) {
-            console.error("Error al actualizar estatus Premium:", err);
-            return res.status(500).json({ mensaje: "Error interno del servidor." });
-        }
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ mensaje: "Usuario no encontrado." });
-        }
-
-        const mensajeExito = premium === 1 
-            ? "¡Felicidades! Ahora eres un usuario Premium." 
-            : "Tu suscripción Premium ha sido cancelada.";
-
-        res.status(200).json({ mensaje: mensajeExito });
-    });
-});
-
-// ==========================================
-// RUTA 14: OBTENER EL PRESUPUESTO GLOBAL DEL USUARIO
-// ==========================================
 app.get('/api/usuarios/:user_id/presupuesto', (req, res) => {
     const userId = req.params.user_id;
     const sql = `SELECT presupuesto_global FROM Usuario WHERE user_id = ?`;
@@ -471,9 +383,6 @@ app.get('/api/usuarios/:user_id/presupuesto', (req, res) => {
     });
 });
 
-// ==========================================
-// RUTA 15: ACTUALIZAR PRESUPUESTO GLOBAL DEL USUARIO
-// ==========================================
 app.put('/api/usuarios/:user_id/presupuesto', (req, res) => {
     const userId = req.params.user_id;
     const { presupuesto_global } = req.body;
@@ -485,9 +394,6 @@ app.put('/api/usuarios/:user_id/presupuesto', (req, res) => {
     });
 });
 
-// ==========================================
-// RUTA 16: ACTUALIZAR LÍMITE DE UNA CATEGORÍA DE GASTO
-// ==========================================
 app.put('/api/categorias/gastos/:categoria_id/presupuesto', (req, res) => {
     const categoriaId = req.params.categoria_id;
     const { limite_presupuesto } = req.body;
@@ -498,8 +404,31 @@ app.put('/api/categorias/gastos/:categoria_id/presupuesto', (req, res) => {
         res.status(200).json({ mensaje: "Límite de categoría actualizado" });
     });
 });
+
+// ==========================================
+// ESTATUS RÁPIDOS (PAGADO / RECIBIDO)
+// ==========================================
+
+app.put('/api/gastos/:gasto_id/estatus', (req, res) => {
+    const gastoId = req.params.gasto_id;
+    const { completado } = req.body; // 1 = Pagado, 0 = Pendiente
+
+    db.query(`UPDATE Gasto SET completado = ? WHERE gasto_id = ?`, [completado, gastoId], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+        res.status(200).json({ mensaje: "Estatus de gasto actualizado" });
+    });
 });
-// 4. Encender el servidor
+
+app.put('/api/ingresos/:ingreso_id/estatus', (req, res) => {
+    const ingresoId = req.params.ingreso_id;
+    const { recibido } = req.body; // 1 = Recibido, 0 = No recibido
+
+    db.query(`UPDATE Ingreso SET recibido = ? WHERE ingreso_id = ?`, [recibido, ingresoId], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
+        res.status(200).json({ mensaje: "Estatus de ingreso actualizado" });
+    });
+});
+
 // --- INICIO DEL SERVIDOR ---
 app.listen(PORT, () => {
     console.log(`🚀 Servidor de Freeze-Xpends corriendo en el puerto ${PORT}`);
