@@ -257,15 +257,15 @@ app.get('/api/gastos/:user_id', (req, res) => {
 });
 
 app.post('/api/gastos', (req, res) => {
-    const { user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto } = req.body;
+    const { user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri } = req.body;
 
     if (!user_id || !fecha_gasto || !nombre_gasto || !monto_gasto) {
         return res.status(400).json({ mensaje: "Faltan campos obligatorios." });
     }
 
-    const sql = `INSERT INTO Gasto (user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO Gasto (user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    db.query(sql, [user_id, categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || null, monto_gasto], (err, result) => {
+    db.query(sql, [user_id, categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || null, monto_gasto ,imagen_uri || null], (err, result) => {
         if (err) {
             console.error("🚨 ERROR FATAL DE MYSQL EN GASTO:", err);
             return res.status(500).json({ mensaje: "Error interno al guardar el gasto." });
@@ -329,16 +329,15 @@ app.get('/api/ingresos/:user_id', (req, res) => {
 // 1. RUTA PARA CREAR INGRESO (Ya guarda el plazo)
 app.post('/api/ingresos', (req, res) => {
 
-    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo } = req.body;
-
+    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri } = req.body;
     if (!user_id || !fecha_ingreso || !nombre_ingreso || !monto) {
         return res.status(400).json({ mensaje: "Faltan campos obligatorios." });
     }
 
     // AQUI ESTÁ LA MAGIA: Ya agregamos 'plazo' a la consulta SQL
-    const sql = `INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    db.query(sql, [user_id, categoria_id || 1, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO'], (err, result) => {
+    db.query(sql, [user_id, categoria_id || null , fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO',imagen_uri || null], (err, result) => {
         if (err) {
             console.error("🚨 ERROR FATAL DE MYSQL EN INGRESO:", err);
             return res.status(500).json({ mensaje: "Error interno al guardar el ingreso." });
@@ -426,6 +425,47 @@ app.put('/api/ingresos/:ingreso_id/estatus', (req, res) => {
     db.query(`UPDATE Ingreso SET recibido = ? WHERE ingreso_id = ?`, [recibido, ingresoId], (err, result) => {
         if (err) return res.status(500).json({ mensaje: "Error interno del servidor." });
         res.status(200).json({ mensaje: "Estatus de ingreso actualizado" });
+    });
+});
+
+// ==========================================
+// RUTAS PARA NOTAS POR DÍA
+// ==========================================
+
+app.get('/api/notas/:user_id/:fecha', (req, res) => {
+    const { user_id, fecha } = req.params;
+    const sql = `SELECT * FROM Notas WHERE user_id = ? AND fecha = ?`;
+    db.query(sql, [user_id, fecha], (err, results) => {
+        if (err) return res.status(500).json({ mensaje: "Error al obtener notas", data: [] });
+        res.status(200).json({ mensaje: "Notas obtenidas", data: results });
+    });
+});
+
+app.post('/api/notas', (req, res) => {
+    const { user_id, fecha, texto } = req.body;
+    const sql = `INSERT INTO Notas (user_id, fecha, texto) VALUES (?, ?, ?)`;
+    db.query(sql, [user_id, fecha, texto], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error al guardar la nota" });
+        res.status(201).json({ mensaje: "Nota guardada", data: { nota_id: result.insertId } });
+    });
+});
+
+app.delete('/api/notas/:nota_id', (req, res) => {
+    const notaId = req.params.nota_id;
+    const sql = `DELETE FROM Notas WHERE nota_id = ?`;
+    db.query(sql, [notaId], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error al eliminar la nota" });
+        res.status(200).json({ mensaje: "Nota eliminada correctamente" });
+    });
+});
+
+app.put('/api/notas/:nota_id', (req, res) => {
+    const notaId = req.params.nota_id;
+    const { texto } = req.body;
+    const sql = `UPDATE Notas SET texto = ? WHERE nota_id = ?`;
+    db.query(sql, [texto, notaId], (err, result) => {
+        if (err) return res.status(500).json({ mensaje: "Error al actualizar la nota" });
+        res.status(200).json({ mensaje: "Nota actualizada correctamente" });
     });
 });
 
