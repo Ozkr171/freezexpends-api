@@ -137,14 +137,14 @@ app.get('/api/usuarios/:user_id', (req, res) => {
 
 app.put('/api/usuarios/:user_id', (req, res) => {
     const userId = req.params.user_id;
-    const { nombre_s, correo_electronico, contrasena, divisa, foto_perfil } = req.body;
+    const { nombre_s, correo_electronico, contrasena, divisa, foto_perfil, formato_num } = req.body;
 
     if (!nombre_s || !correo_electronico) {
         return res.status(400).json({ mensaje: "Faltan datos obligatorios (nombre o correo)." });
     }
 
-    let sql = `UPDATE Usuario SET nombre_s = ?, correo_electronico = ?, divisa = ?, foto_perfil = ?`;
-    let params = [nombre_s, correo_electronico, divisa || 'MXN', foto_perfil || null];
+    let sql = `UPDATE Usuario SET nombre_s = ?, correo_electronico = ?, divisa = ?, foto_perfil = ?, formato_num = ?`;
+    let params = [nombre_s, correo_electronico, divisa || 'MXN', foto_perfil || null, formato_num || 'US'];
 
     if (contrasena) {
         sql += `, contrasena = ?`;
@@ -257,44 +257,43 @@ app.get('/api/gastos/:user_id', (req, res) => {
 });
 
 app.post('/api/gastos', (req, res) => {
-    const { user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri } = req.body;
+    const { user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri } = req.body; // [cite: 1]
 
     if (!user_id || !fecha_gasto || !nombre_gasto || !monto_gasto) {
-        return res.status(400).json({ mensaje: "Faltan campos obligatorios." });
+        return res.status(400).json({ mensaje: "Faltan campos obligatorios." }); // [cite: 1]
     }
 
-    const sql = `INSERT INTO Gasto (user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO Gasto (user_id, categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`; // [cite: 1]
 
-    db.query(sql, [user_id, categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || null, monto_gasto ,imagen_uri || null], (err, result) => {
+    db.query(sql, [user_id, categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || null, monto_gasto ,imagen_uri || null], (err, result) => { // [cite: 1, 2]
         if (err) {
-            console.error("🚨 ERROR FATAL DE MYSQL EN GASTO:", err);
-            return res.status(500).json({ mensaje: "Error interno al guardar el gasto." });
+            console.error("🚨 ERROR FATAL DE MYSQL EN GASTO:", err); // [cite: 2]
+            return res.status(500).json({ mensaje: "Error interno al guardar el gasto." }); // [cite: 2]
         }
-        res.status(201).json({ mensaje: "¡Gasto registrado!", data: { gasto_id: result.insertId } });
+        res.status(201).json({ mensaje: "¡Gasto registrado!", data: { gasto_id: result.insertId } }); // [cite: 2]
     });
 });
 
 app.put('/api/gastos/:gasto_id', (req, res) => {
-    const gastoId = req.params.gasto_id;
-    // Extraemos las variables reales que manda el GastoRequest de Android
-    const { categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto } = req.body;
+    const gastoId = req.params.gasto_id; // [cite: 3]
+    
+    const { categoria_id, fecha_gasto, nombre_gasto, descripcion, plazo, monto_gasto, imagen_uri } = req.body; 
 
     if (!nombre_gasto || !monto_gasto || !fecha_gasto) {
-        return res.status(400).json({ mensaje: "Faltan datos obligatorios para actualizar." });
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios para actualizar." }); // [cite: 3]
     }
 
-    // REMOVEMOS 'imagen_uri' de la consulta y añadimos 'categoria_id' y 'plazo'
-    const sql = `UPDATE Gasto SET categoria_id = ?, fecha_gasto = ?, nombre_gasto = ?, descripcion = ?, plazo = ?, monto_gasto = ? WHERE gasto_id = ?`;
+    const sql = `UPDATE Gasto SET categoria_id = ?, fecha_gasto = ?, nombre_gasto = ?, descripcion = ?, plazo = ?, monto_gasto = ?, imagen_uri = ? WHERE gasto_id = ?`;
 
-    db.query(sql, [categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || 'ÚNICO', monto_gasto, gastoId], (err, result) => {
+    db.query(sql, [categoria_id || null, fecha_gasto, nombre_gasto, descripcion || null, plazo || 'ÚNICO', monto_gasto, imagen_uri || null, gastoId], (err, result) => {
         if (err) {
-            console.error("🚨 ERROR EN BASE DE DATOS AL EDITAR GASTO:", err);
-            return res.status(500).json({ mensaje: "Error interno del servidor." });
+            console.error("🚨 ERROR EN BASE DE DATOS AL EDITAR GASTO:", err); // [cite: 4]
+            return res.status(500).json({ mensaje: "Error interno del servidor." }); // [cite: 4]
         }
-        if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Gasto no encontrado." });
-        res.status(200).json({ mensaje: "¡Gasto actualizado!" });
+        if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Gasto no encontrado." }); // [cite: 5]
+        res.status(200).json({ mensaje: "¡Gasto actualizado!" }); // [cite: 6]
     });
-});
+})
 
 app.delete('/api/gastos/:gasto_id', (req, res) => {
     const gastoId = req.params.gasto_id;
@@ -326,45 +325,42 @@ app.get('/api/ingresos/:user_id', (req, res) => {
     });
 });
 
-// 1. RUTA PARA CREAR INGRESO (Ya guarda el plazo)
 app.post('/api/ingresos', (req, res) => {
-
-    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri } = req.body;
+    const { user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri } = req.body; // [cite: 6]
+    
     if (!user_id || !fecha_ingreso || !nombre_ingreso || !monto) {
-        return res.status(400).json({ mensaje: "Faltan campos obligatorios." });
+        return res.status(400).json({ mensaje: "Faltan campos obligatorios." }); // [cite: 6]
     }
 
-    // AQUI ESTÁ LA MAGIA: Ya agregamos 'plazo' a la consulta SQL
-    const sql = `INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO Ingreso (user_id, categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`; // [cite: 6, 7]
 
-    db.query(sql, [user_id, categoria_id || null , fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO',imagen_uri || null], (err, result) => {
+    db.query(sql, [user_id, categoria_id || null , fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO',imagen_uri || null], (err, result) => { // [cite: 7]
         if (err) {
-            console.error("🚨 ERROR FATAL DE MYSQL EN INGRESO:", err);
-            return res.status(500).json({ mensaje: "Error interno al guardar el ingreso." });
+            console.error("🚨 ERROR FATAL DE MYSQL EN INGRESO:", err); // [cite: 7]
+            return res.status(500).json({ mensaje: "Error interno al guardar el ingreso." }); // [cite: 7]
         }
-        res.status(201).json({ mensaje: "¡Ingreso registrado!", data: { ingreso_id: result.insertId } });
+        res.status(201).json({ mensaje: "¡Ingreso registrado!", data: { ingreso_id: result.insertId } }); // [cite: 7, 8]
     });
 });
 
 app.put('/api/ingresos/:ingreso_id', (req, res) => {
-    const ingresoId = req.params.ingreso_id;
-    // Extraemos las variables reales que manda el IngresoRequest de Android
-    const { categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo } = req.body;
+    const ingresoId = req.params.ingreso_id; // [cite: 9]
+    
+    const { categoria_id, fecha_ingreso, nombre_ingreso, descripcion, monto, recibido, plazo, imagen_uri } = req.body;
 
     if (!nombre_ingreso || !monto || !fecha_ingreso) {
-        return res.status(400).json({ mensaje: "Faltan datos obligatorios para actualizar el ingreso." });
+        return res.status(400).json({ mensaje: "Faltan datos obligatorios para actualizar el ingreso." }); // [cite: 9]
     }
 
-    // REMOVEMOS 'imagen_uri' de la consulta y añadimos el 'plazo'
-    const sql = `UPDATE Ingreso SET categoria_id = ?, fecha_ingreso = ?, nombre_ingreso = ?, descripcion = ?, monto = ?, recibido = ?, plazo = ? WHERE ingreso_id = ?`;
+    const sql = `UPDATE Ingreso SET categoria_id = ?, fecha_ingreso = ?, nombre_ingreso = ?, descripcion = ?, monto = ?, recibido = ?, plazo = ?, imagen_uri = ? WHERE ingreso_id = ?`;
 
-    db.query(sql, [categoria_id || null, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO', ingresoId], (err, result) => {
+    db.query(sql, [categoria_id || null, fecha_ingreso, nombre_ingreso, descripcion || null, monto, recibido !== undefined ? recibido : 1, plazo || 'ÚNICO', imagen_uri || null, ingresoId], (err, result) => {
         if (err) {
-            console.error("🚨 ERROR EN BASE DE DATOS AL EDITAR INGRESO:", err);
-            return res.status(500).json({ mensaje: "Error interno del servidor." });
+            console.error("🚨 ERROR EN BASE DE DATOS AL EDITAR INGRESO:", err); // [cite: 10]
+            return res.status(500).json({ mensaje: "Error interno del servidor." }); // [cite: 10]
         }
-        if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Ingreso no encontrado." });
-        res.status(200).json({ mensaje: "¡Ingreso actualizado!" });
+        if (result.affectedRows === 0) return res.status(404).json({ mensaje: "Ingreso no encontrado." }); // [cite: 11]
+        res.status(200).json({ mensaje: "¡Ingreso actualizado!" }); // [cite: 12]
     });
 });
 
@@ -429,8 +425,19 @@ app.put('/api/ingresos/:ingreso_id/estatus', (req, res) => {
 });
 
 // ==========================================
-// RUTAS PARA NOTAS POR DÍA
+// RUTAS PARA NOTAS POR DÍA Y MES
 // ==========================================
+
+// --- NUEVA RUTA PARA LISTAR TODAS LAS NOTAS DE UN MES ---
+app.get('/api/notas/:user_id/mes/:anio_mes', (req, res) => {
+    const { user_id, anio_mes } = req.params;
+    // anio_mes llega como '2024-05', usamos LIKE para agarrar todo el mes
+    const sql = `SELECT * FROM Notas WHERE user_id = ? AND fecha LIKE ? ORDER BY fecha ASC`;
+    db.query(sql, [user_id, `${anio_mes}-%`], (err, results) => {
+        if (err) return res.status(500).json({ mensaje: "Error al obtener notas", data: [] });
+        res.status(200).json({ mensaje: "Notas obtenidas", data: results });
+    });
+});
 
 app.get('/api/notas/:user_id/:fecha', (req, res) => {
     const { user_id, fecha } = req.params;
@@ -466,6 +473,28 @@ app.put('/api/notas/:nota_id', (req, res) => {
     db.query(sql, [texto, notaId], (err, result) => {
         if (err) return res.status(500).json({ mensaje: "Error al actualizar la nota" });
         res.status(200).json({ mensaje: "Nota actualizada correctamente" });
+    });
+});
+
+// ==========================================
+// RECORDATORIOS (ALARMAS)
+// ==========================================
+
+app.post('/api/recordatorios', (req, res) => {
+    const { user_id, fecha_y_hora, titulo_r } = req.body;
+    
+    if (!user_id || !fecha_y_hora || !titulo_r) {
+        return res.status(400).json({ mensaje: "Faltan datos para el recordatorio." });
+    }
+
+    const sql = `INSERT INTO Recordatorios (user_id, fecha_y_hora, completado, titulo_r) VALUES (?, ?, 0, ?)`;
+    
+    db.query(sql, [user_id, fecha_y_hora, titulo_r], (err, result) => {
+        if (err) {
+            console.error("🚨 ERROR EN RECORDATORIO:", err);
+            return res.status(500).json({ mensaje: "Error al guardar recordatorio." });
+        }
+        res.status(201).json({ mensaje: "Recordatorio guardado", data: { recordatorio_id: result.insertId } });
     });
 });
 
